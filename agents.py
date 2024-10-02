@@ -228,5 +228,5 @@ workflow.add_edge('incompleteInformationAgent', END)
 graph = workflow.compile()
 
 
-question = 'saya ingin reset password dengan email google'
+question = 'saya ingin reset password dengan email gelgel@undiksha.ac.id'
 graph.invoke({'question': question})
