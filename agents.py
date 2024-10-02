@@ -9,10 +9,11 @@ from llm import chat_ollama, chat_openai
 import os
 import json
 
-load_dotenv()
 
+load_dotenv()
 base_url = os.getenv('BASE_URL')
 openai_api_key = os.getenv('OPENAI_API')
+
 
 class AgentState(TypedDict):
     context : str
@@ -25,9 +26,9 @@ class AgentState(TypedDict):
     incompleteReason : Optional[str] = None
     resetPasswordType : Optional[str] = None
 
+
 def questionIdentifierAgent(state: AgentState):
     print("--- QUESTION IDENTIFIER AGENT ---")
-
     print(state['question'])
     prompt = """
         Anda adalah analis pertanyaan pengguna. Tugas anda adalah mengklasifikasikan pertanyaan yang masuk.
@@ -44,23 +45,20 @@ def questionIdentifierAgent(state: AgentState):
         - OUT OF CONTEXT - Jika tidak tahu jawabannya berdasarkan konteks yang diberikan.
         Hasilkan hanya satu kata (ACCOUNT, ACADEMIC, STUDENT, NEWS, GENERAL, OUT OF CONTEXT) berdasarkan pertanyaan yang diberikan.
     """
-
     messages = [
         SystemMessage(content=prompt),
         HumanMessage(content=state['question']),
     ]
-
     response = chat_ollama(messages)
-
     return {"question_type": response}
 
 
 def routeToSpecificAgent(state: AgentState): 
     return state['question_type']
 
+
 def accountAgent(state: AgentState):
     print("\n--- ACCOUNT AGENT ---")
-
     prompt = f"""
         Pertanyaan : {state['question']}
         Hasilkan dalam bentuk JSON tanpa pembungkus.
@@ -72,10 +70,8 @@ def accountAgent(state: AgentState):
             - "HYBRID EMAIL" (ketika dari pernyataan user jelas menyebutkan reset password untuk akun google undiksha dan SSO E-Ganesha), 
             - "INCOMPLETE INFORMATION" (ketika dari pernyataan user tidak jelas menyebutkan apakah reset password untuk akun google undiksha atau SSO E-Ganesha)
     """
-
     response = chat_openai(question=prompt, model='gpt-4o-mini')
     # response = chat_ollama(question=prompt, model='gemma2')
-
     print(response)
 
     try:
@@ -84,7 +80,7 @@ def accountAgent(state: AgentState):
         emailType = result.get('EmailType')
         print("email: ", email)
         print("emailType: ", emailType)
-        validUndikshaEmail = email.endswith("@undiksha.ac.id") or email.endswith("@student.undiksha.ac.id")
+        validUndikshaEmail = email and (email.endswith("@undiksha.ac.id") or email.endswith("@student.undiksha.ac.id"))
 
         if email: # Cek apakah email dan emailType bukan INCOMPLETE INFORMATION atau tidak None
             if validUndikshaEmail:
@@ -110,9 +106,9 @@ def accountAgent(state: AgentState):
         # Handle the case where the response is not valid JSON
         print(f"Err: {e}")
 
+
 def routeToSpecificEmailAgent(state: AgentState):
     return state['resetPasswordType']
-
     
 
 def SSOEmailAgent(state: AgentState):
@@ -123,9 +119,11 @@ def GoogleEmailAgent(state: AgentState):
     print("--- GOOGLE EMAIL AGENT ---")
     pass
 
+
 def HybridEmailAgent(state: AgentState):
     print("--- HYBRID EMAIL AGENT ---")
     pass
+
 
 def incompleteInformationAgent(state: AgentState):
     print("\n--- INCOMPLETE INFORMATION AGENT ---")
@@ -136,39 +134,41 @@ def incompleteInformationAgent(state: AgentState):
         - Diakhir selalu selipkan kalimat seperti jika kebingungan terkait permasalahan tersebut bisa menghubungi UPA TIK (Unit Penunjang Akademik Teknologi Informasi dan Komunikasi) Undiksha. Buat agar jawaban yang kamu berikan nyambung dengan pertanyaan yang diberikan
         Pertanyaan dari user adalah:  {state['question']}, sedangkan alasan tidak validnya karena : {state['incompleteReason']}
     """
-
     response = chat_ollama(question=prompt, model='gemma2')
-
     print(response)
 
 
-# ===============================================================================
 def resetPasswordAgent(state: AgentState):
     pass
 
 def identityVerificatorAgent(state: AgentState):
     pass
 
-# ===================================================================================
+
 def academicAgent(state: AgentState):
     print("--- ACADEMIC AGENT ---")
     pass
+
 
 def studentAgent(state: AgentState):
     print("--- STUDENT AGENT ---")
     pass
 
+
 def newsAgent(state: AgentState):
     print("--- NEWS AGENT ---")
     pass
+
 
 def generalAgent(state: AgentState):
     print("--- GENERAL AGENT ---")
     pass
 
+
 def outOfContextAgent(state: AgentState):
     print("--- OUT OF CONTEXT AGENT ---")
     pass
+
 
 # Definisikan Langgraph
 workflow = StateGraph(AgentState)
@@ -189,7 +189,6 @@ workflow.add_node('incompleteInformationAgent', incompleteInformationAgent)
 # workflow.add_node('identityVerificatorAgent', identityVerificatorAgent)
 
 # Definisikan Edge
-
 # AGEN KELAS 1
 workflow.add_edge(START, 'question_identifier')
 workflow.add_conditional_edges(
@@ -222,11 +221,12 @@ workflow.add_edge('general', END)
 
 # AGEN KELAS 3
 workflow.add_edge('SSOEmailAgent', END) 
-workflow.add_edge('UndikshaGoogleEmailAgent', END)
+workflow.add_edge('GoogleEmailAgent', END)
 workflow.add_edge('incompleteInformationAgent', END)
 
 # Compile Graph
 graph = workflow.compile()
+
 
 question = 'saya ingin reset password dengan email google'
 graph.invoke({'question': question})
