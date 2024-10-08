@@ -1,6 +1,6 @@
 import re
 from langgraph.graph import END, START, StateGraph
-from typing import TypedDict
+from typing import Optional, TypedDict
 from langchain.memory import ConversationBufferMemory
 from langchain_core.messages import HumanMessage, SystemMessage
 from utils.llm import chat_openai, chat_ollama, embedding_openai, embedding_ollama
@@ -10,6 +10,9 @@ class AgentState(TypedDict):
     context : str
     question : str
     question_type : str
+    email: Optional[str] = None
+    accessAccountGoogleStatus : Optional[str] = None
+    accountType : Optional[str] = None
     memory: ConversationBufferMemory
 
 
@@ -119,14 +122,32 @@ def googleAccountAgent(state: AgentState):
 def ssoAccountAgent(state: AgentState):
     info = "--- SSO ACCOUNT ---"
     print(info)
+
+    question = state["question"]
+    email_pattern = r'\b[a-zA-Z0-9._%+-]+@(undiksha\.ac\.id|student\.undiksha\.ac\.id)\b'
+
+    email_match = re.search(email_pattern, question)
+    if email_match:
+        state["email"] = email_match.group(0)
+    else:
+        state["email"] = None
+
+    question_lower = question.lower()
+    if any(phrase in question_lower for phrase in ["tidak bisa akses", "gak bisa akses", "tidak dapat mengakses", "gak bisa masuk", "tidak bisa login"]):
+        state["accessAccountGoogleStatus"] = "false"
+    elif any(phrase in question_lower for phrase in ["bisa akses", "bisa masuk", "bisa login", "akses"]):
+        state["accessAccountGoogleStatus"] = "true"
+    else:
+        state["accessAccountGoogleStatus"] = None
+
     prompt = """
         Anda adalah seoarang analis tentang akun SSO Undiksha (Universitas Pendidikan Ganesha).
         Tugas Anda adalah mengklasifikasikan jenis pertanyaan.
         Sekarang tergantung pada jawaban Anda, akan mengarahkan ke agent yang tepat.
         Ada 3 konteks yang diajukan:
-        - RESET_SSO_PASSWORD - Jika pengguna sudah menyebutkan keterangan mau reset password untuk Email SSO Undiksha, menyertakan email Undiksha dengan domain @undiksha.ac.id dan @student.undiksha.ac.id, dan informasi akun google dari Undiksha bisa diakses atau bisa digunakan (jika salah satu tidak ada maka sudah dipastikan IDENTITY_VERIFICATOR).
-        - INCOMPLETE_SSO_INFO - Jika pengguna tidak lengkap menyebutkan keterangan mau reset password untuk Email SSO Undiksha, email Undiksha dengan domain @undiksha.ac.id dan @student.undiksha.ac.id, dan informasi akun google dari Undiksha tidak bisa diakses atau tidak bisa digunakan.
-        - IDENTITY_VERIFICATOR - Jika pengguna tidak bisa mengakses akun google dari Undiksha (walaupun menyebutkan email), karena permintaan reset password sso akan dikirimkan melalui emailnya.
+        - RESET_SSO_PASSWORD - Hanya ketika pengguna menyebutkan Email Undiksha @undiksha.ac.id @student.undiksha.ac.id dan harus mengatakan akun google bisa diakses atau bisa digunakan, jika salah satu tidak disebutkan maka tidak bisa reset password.
+        - INCOMPLETE_SSO_INFO - Ketika pengguna tidak menyebutkan email Undiksha dengan domain @undiksha.ac.id dan @student.undiksha.ac.id dan tidak mengatakan kondisi akun google.
+        - IDENTITY_VERIFICATOR - Ketika pengguna tidak bisa mengakses akun google dari Undiksha (walaupun menyebutkan email), karena permintaan reset password sso akan dikirimkan melalui emailnya.
         Hasilkan hanya 1 sesuai kata (RESET_SSO_PASSWORD, INCOMPLETE_SSO_INFO, IDENTITY_VERIFICATOR).
     """
     messages = [
@@ -142,6 +163,8 @@ def ssoAccountAgent(state: AgentState):
         state['question_type'] += f", {cleaned_response}"
 
     print(f"question_type: {cleaned_response}\n")
+    print(f"Email: {state['email']}")
+    print(f"Akses Akun Google: {state['accessAccountGoogleStatus']}")
     return {"question_type": cleaned_response}
 
 
@@ -301,7 +324,7 @@ graph = workflow.compile()
 
 
 # Contoh pertanyaan
-question = "apa itu undiksha? info berita menarik undiksha? bagaimana menjadi mahasiswa yang baik? apa saja yang ada di akademik? saya ingin reset password sso email gelgel@undiksha.ac.id"
+question = "saya ingin reset password sso email gelgel@undiksha.ac.id"
 state = {"question": question}
 
 # Jalankan question identifier untuk mendapatkan agen yang perlu dieksekusi
